@@ -25,12 +25,3 @@ def square_root(a: float) -> float:
     if a < 0:
         raise ValueError("No se puede calcular raíz cuadrada de número negativo")
     return a ** 0.5
-
-# Función para validar operaciones
-def validate_operation(a: float, b: float, operation: str) -> bool:
-    """Valida que la operación sea posible"""
-    if operation == "divide" and b == 0:
-        return False
-    if operation == "square_root" and a < 0:
-        return False
-    return True
