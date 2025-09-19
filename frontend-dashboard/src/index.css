@@ -1,0 +1,28 @@
+/* --- Importa Tailwind --- */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Estilos globales mínimos --- */
+html,
+body,
+#root {
+  height: 100%;   /* Asegura que el layout ocupe toda la pantalla */
+  margin: 0;      /* Quita márgenes por defecto */
+  padding: 0;
+}
+
+/* Si quieres, puedes definir variables de fuente, pero sin color/fondo forzados */
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Enlaces sin subrayado (opcional) */
+a {
+  text-decoration: none;
+}
