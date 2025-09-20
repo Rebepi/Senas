@@ -7,9 +7,10 @@ export function Sidebar() {
 
   const menuItems = [
     { name: "Inicio", icon: <Home size={20} />, path: "/" },
-    { name: "Lenguaje de Señas", icon: <Type size={20} />, path: "/lenguaje-senas" },
-    { name: "Operaciones Matemáticas", icon: <Calculator size={20} />, path: "/operaciones-matematicas" },
+    { name: "Lenguaje de Señas", icon: <Type size={20} />, path: "/vocales" },
+    { name: "Operaciones Matemáticas", icon: <Calculator size={20} />, path: "/calculadora" },
     { name: "Abecedario", icon: <Book size={20} />, path: "/abecedario" },
+    { name: "Oraciones", icon: <Calculator size={20} />, path: "/oraciones" },
     { name: "Perfil de Usuario", icon: <User size={20} />, path: "/perfil" },
   ];
 

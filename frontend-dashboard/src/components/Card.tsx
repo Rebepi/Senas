@@ -1,14 +1,20 @@
-import type { ReactNode } from "react";
+// src/components/Card.tsx
 type Props = {
-  title: string;
-  children: ReactNode;
+  letra: string;
+  imagen: string;
 };
 
-export function Card({ title, children }: Props) {
+export default function Card({ letra, imagen }: Props) {
   return (
-    <div className="bg-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700">
-      <h2 className="text-xl font-semibold mb-4 text-white">{title}</h2>
-      {children}
+    <div className="bg-white rounded-2xl shadow-md hover:shadow-lg transition cursor-pointer">
+      <img
+        src={imagen}
+        alt={`Seña para la letra ${letra}`}
+        className="w-full h-40 object-cover rounded-t-2xl"
+      />
+      <div className="p-4 text-center">
+        <span className="text-xl font-bold">{letra}</span>
+      </div>
     </div>
   );
 }
