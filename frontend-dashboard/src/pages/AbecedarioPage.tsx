@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 const letrasDisponibles: Record<string, string> = {
   A: "/assets/abecedario/A.jpg",
@@ -74,6 +75,8 @@ const abecedario = letras.map((letter) => ({
 }));
 
 export default function AbecedarioPage() {
+  const navigate = useNavigate();
+
   return (
     <div className="p-6 bg-slate-950 min-h-screen">
       <h1 className="text-3xl sm:text-4xl font-extrabold mb-8 text-white text-center">
@@ -84,11 +87,7 @@ export default function AbecedarioPage() {
         {abecedario.map(({ letter, img, desc }) => (
           <div
             key={letter}
-            className="
-              bg-slate-900 border border-slate-700 rounded-xl overflow-hidden
-              flex flex-col items-center transition-transform duration-300
-              hover:scale-105 hover:shadow-[0_0_50px_10px_rgba(99,102,241,0.8)]
-            "
+            className="bg-slate-900 border border-slate-700 rounded-xl overflow-hidden flex flex-col items-center transition-transform duration-300 hover:scale-105 hover:shadow-[0_0_50px_10px_rgba(99,102,241,0.8)]"
           >
             <img
               src={img}
@@ -98,7 +97,10 @@ export default function AbecedarioPage() {
             <div className="p-3 flex flex-col items-center w-full">
               <span className="text-3xl sm:text-4xl font-bold text-indigo-500">{letter}</span>
               <p className="text-xs sm:text-sm text-slate-400 text-center mt-1">{desc}</p>
-              <button className="mt-3 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm transition">
+              <button
+                className="mt-3 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-sm transition"
+                onClick={() => navigate("/entrenamiento")}
+              >
                 Comenzar Entrenamiento
               </button>
             </div>
@@ -108,3 +110,4 @@ export default function AbecedarioPage() {
     </div>
   );
 }
+

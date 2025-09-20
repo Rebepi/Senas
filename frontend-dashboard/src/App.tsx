@@ -6,6 +6,7 @@ import CalculadoraPage from "./pages/CalculadoraPage";
 import AbecedarioPage from "./pages/AbecedarioPage";
 import OracionesPage from "./pages/OracionesPage";
 import PerfilPage from "./pages/PerfilPage";
+import EntrenamientoPage from "./pages/EntrenamientoPage";
 
 function App() {
   return (
@@ -18,6 +19,9 @@ function App() {
           <Route path="/oraciones" element={<OracionesPage />} />
           <Route path="/calculadora" element={<CalculadoraPage />} />
           <Route path="/perfil" element={<PerfilPage />} />
+
+          <Route path="/entrenamiento" element={<EntrenamientoPage />} />
+          
         </Routes>
       </DashboardLayout>
     </BrowserRouter>

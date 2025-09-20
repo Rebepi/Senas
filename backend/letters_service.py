@@ -26,11 +26,26 @@ else:
     print("No se encontró modelo de letras. Se iniciará uno nuevo.")
 
 # ---------------------------
+# Función de conversión
+# ---------------------------
+def landmarks_to_features(landmarks):
+    """
+    Convierte una lista de dicts {'x','y','z'} a lista plana de floats.
+    """
+    features = []
+    for point in landmarks:
+        features.extend([point['x'] if isinstance(point, dict) else point.x,
+                         point['y'] if isinstance(point, dict) else point.y,
+                         point['z'] if isinstance(point, dict) else point.z])
+    return features
+
+# ---------------------------
 # Funciones principales
 # ---------------------------
 def train_letter(landmarks, label):
     """
     Entrena el modelo con una nueva muestra de letra.
+    landmarks: lista de floats (ya aplanada)
     """
     global X_train, y_train, model
 
@@ -46,10 +61,17 @@ def train_letter(landmarks, label):
     print(f"Entrenando letra '{label}'... Total muestras: {len(y_train)}")
     return len(y_train)
 
+def train_letter_from_request(req):
+    """
+    Entrena letra a partir del request del frontend (landmarks dict + label)
+    """
+    features = landmarks_to_features(req.landmarks)
+    return train_letter(features, req.label)
+
 
 def predict_letter(landmarks):
     """
-    Predice la letra a partir de landmarks.
+    Predice la letra a partir de landmarks (lista de floats)
     """
     global model
     if model is None or len(X_train) == 0:
@@ -60,6 +82,13 @@ def predict_letter(landmarks):
     confidence = model.predict_proba(features).max()
     print(f"Predicción: {prediction} Confianza: {confidence:.2f}")
     return prediction, float(confidence)
+
+def predict_letter_from_request(req):
+    """
+    Predice letra a partir del request del frontend (landmarks dict)
+    """
+    features = landmarks_to_features(req.landmarks)
+    return predict_letter(features)
 
 
 def list_letters():
