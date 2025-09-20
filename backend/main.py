@@ -145,15 +145,37 @@ async def calculate_math(operation: MathOperation):
     try:
         a, b = operation.a, operation.b
         op = operation.operation
-        if op == "+": result = math_service.add(a, b)
-        elif op == "-": result = math_service.subtract(a, b)
-        elif op == "*": result = math_service.multiply(a, b)
-        elif op == "/": result = math_service.divide(a, b)
-        elif op == "**": result = math_service.power(a, b)
-        else: raise HTTPException(status_code=400, detail="Operación no válida")
+
+        # Usamos un diccionario para mapear las operaciones, es más limpio esto
+        operations = {
+            "+": math_service.add,
+            "-": math_service.subtract,
+            "*": math_service.multiply,
+            "/": math_service.divide,
+            "**": math_service.power,
+            "sqrt": math_service.square_root
+        }
+
+        # Validamos si la operación existe en el diccionario
+        if op not in operations:
+            raise HTTPException(status_code=400, detail="Operación no válida")
+        
+        # En el caso de raíz cuadrada, solo usamos 'a'
+        if op == "sqrt":
+            result = operations[op](a) # Solo se pasa un argumento
+            return MathResult(result=result, operation=f"sqrt({a})")
+        
+        # Llamamos a la función correspondiente
+        result = operations[op](a, b)
+
         return MathResult(result=result, operation=f"{a} {op} {b}")
-    except Exception as e:
+    
+    except ValueError as e:
+        # Capturamos solo el error de división por cero
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Capturamos cualquier otro error
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 # ---------------------------
 # ROOT (INFO GENERAL)
