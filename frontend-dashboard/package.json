@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "copy-mp-assets": "node copy-mp-assets.js"
   },
   "dependencies": {
     "@mediapipe/camera_utils": "^0.3.1675466862",
