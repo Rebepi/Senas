@@ -11,22 +11,20 @@ interface UseHandCameraProps {
 export function useHandCamera({ width = 640, height = 480, onResults }: UseHandCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  // Conexiones de la mano según MediaPipe
-  const connections: [number, number][] = [
-    [0,1],[1,2],[2,3],[3,4],       // Pulgar
-    [0,5],[5,6],[6,7],[7,8],       // Índice
-    [0,9],[9,10],[10,11],[11,12],  // Medio
-    [0,13],[13,14],[14,15],[15,16],// Anular
-    [0,17],[17,18],[18,19],[19,20] // Meñique
-  ];
+  const sendingFrame = useRef(false);
+  const cameraRef = useRef<Camera | null>(null);
+  const handsRef = useRef<mpHands.Hands | null>(null);
+  const mounted = useRef(true);
 
   useEffect(() => {
+    mounted.current = true;
+
     if (!videoRef.current) return;
 
     const hands = new mpHands.Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
     });
+    handsRef.current = hands;
 
     hands.setOptions({
       maxNumHands: 1,
@@ -36,54 +34,60 @@ export function useHandCamera({ width = 640, height = 480, onResults }: UseHandC
     });
 
     hands.onResults((results) => {
-      const ctx = canvasRef.current?.getContext("2d");
-      if (!ctx || !canvasRef.current || !videoRef.current) return;
+      if (!mounted.current) return;
 
-      // Limpiar canvas
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      // Dibujar video como fondo
-      ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      if (!video || !canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      canvas.width = video.videoWidth || width;
+      canvas.height = video.videoHeight || height;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      try {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      } catch {}
 
       let landmarks: number[][] | null = null;
-
       if (results.multiHandLandmarks?.length) {
-        landmarks = results.multiHandLandmarks[0].map(lm => [lm.x, lm.y, lm.z]);
-
-        // Dibujar conexiones (malla)
-        ctx.strokeStyle = "#4ade80"; // verde pastel
-        ctx.lineWidth = 2;
-        for (const [startIdx, endIdx] of connections) {
-          const start = results.multiHandLandmarks[0][startIdx];
-          const end = results.multiHandLandmarks[0][endIdx];
-          ctx.beginPath();
-          ctx.moveTo(start.x * canvasRef.current.width, start.y * canvasRef.current.height);
-          ctx.lineTo(end.x * canvasRef.current.width, end.y * canvasRef.current.height);
-          ctx.stroke();
-        }
-
-        // Dibujar puntos
-        for (const lm of results.multiHandLandmarks[0]) {
-          ctx.beginPath();
-          ctx.arc(lm.x * canvasRef.current.width, lm.y * canvasRef.current.height, 4, 0, 2 * Math.PI);
-          ctx.fillStyle = "#facc15"; // amarillo brillante
-          ctx.fill();
-          ctx.strokeStyle = "#eab308"; // borde naranja
-          ctx.stroke();
-        }
+        landmarks = results.multiHandLandmarks[0].map((lm) => [lm.x, lm.y, lm.z]);
       }
 
       onResults(landmarks);
     });
 
     const camera = new Camera(videoRef.current, {
-      onFrame: async () => {
-        await hands.send({ image: videoRef.current! });
-      },
       width,
       height,
-    });
-    camera.start();
+      onFrame: async () => {
+        if (!mounted.current) return;
+        if (sendingFrame.current || !handsRef.current) return;
+        if (!videoRef.current || videoRef.current.readyState < 2) return;
 
+        sendingFrame.current = true;
+        try {
+          await handsRef.current.send({ image: videoRef.current });
+        } catch (err) {
+          console.warn("Error enviando frame a MediaPipe:", err);
+        } finally {
+          sendingFrame.current = false;
+        }
+      },
+    });
+
+    cameraRef.current = camera;
+    camera.start().catch((err) => console.error("Error iniciando cámara:", err));
+
+    return () => {
+      mounted.current = false;
+      try { cameraRef.current?.stop(); } catch {}
+      try { handsRef.current?.close(); } catch {}
+      cameraRef.current = null;
+      handsRef.current = null;
+    };
   }, [onResults, width, height]);
 
   return { videoRef, canvasRef };

@@ -1,23 +1,73 @@
-import React, { useState } from "react";
+// src/pages/CamaraPage.tsx
+import React, { useRef, useEffect, useState } from "react";
 import { trainLetter, predictLetter } from "../services/api";
-import { useHandCamera } from "../hooks/useHandCamera";
+import * as mpHands from "@mediapipe/hands";
+import { Camera } from "@mediapipe/camera_utils";
 
 export default function CamaraPage() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [letter, setLetter] = useState("A");
-  const [landmarks, setLandmarks] = useState<number[][] | null>(null);
   const [resultado, setResultado] = useState<{ prediction: string; confidence: number } | null>(null);
   const [mensaje, setMensaje] = useState("");
   const [error, setError] = useState("");
 
-  // Usamos nuestro hook
-  const { videoRef, canvasRef } = useHandCamera({
-    onResults: (lm) => setLandmarks(lm),
-  });
+  // Inicializamos MediaPipe Hands
+  useEffect(() => {
+    if (!videoRef.current) return;
+
+    const hands = new mpHands.Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7,
+    });
+
+    hands.onResults((results) => {
+      const ctx = canvasRef.current?.getContext("2d");
+      if (!ctx || !canvasRef.current || !videoRef.current) return;
+
+      // Limpiar canvas
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+
+      // Dibujar video
+      ctx.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+
+      if (results.multiHandLandmarks?.length) {
+        const landmarks = results.multiHandLandmarks[0];
+
+        // Dibujar puntos (opcional)
+        for (const lm of landmarks) {
+          ctx.beginPath();
+          ctx.arc(lm.x * canvasRef.current.width, lm.y * canvasRef.current.height, 5, 0, 2 * Math.PI);
+          ctx.fillStyle = "red";
+          ctx.fill();
+        }
+
+        // Guardar landmarks para entrenamiento/predicción
+        videoRef.current.dataset.landmarks = JSON.stringify(landmarks.map(lm => [lm.x, lm.y, lm.z]));
+      }
+    });
+
+    const camera = new Camera(videoRef.current, {
+      onFrame: async () => {
+        await hands.send({ image: videoRef.current! });
+      },
+      width: 640,
+      height: 480,
+    });
+    camera.start();
+  }, []);
 
   // ---- ENTRENAR LETRA ----
   const entrenar = async () => {
     try {
-      if (!landmarks) return;
+      if (!videoRef.current?.dataset.landmarks) return;
+      const landmarks = JSON.parse(videoRef.current.dataset.landmarks);
       const res = await trainLetter(landmarks, letter);
       setMensaje(`Letra ${letter} entrenada. Total muestras: ${res.total_samples}`);
       setResultado(null);
@@ -31,7 +81,8 @@ export default function CamaraPage() {
   // ---- PREDICCIÓN ----
   const predecir = async () => {
     try {
-      if (!landmarks) return;
+      if (!videoRef.current?.dataset.landmarks) return;
+      const landmarks = JSON.parse(videoRef.current.dataset.landmarks);
       const res = await predictLetter(landmarks);
       setResultado(res);
       setMensaje("");
@@ -77,4 +128,4 @@ export default function CamaraPage() {
       {error && <div className="mt-4 text-red-400">{error}</div>}
     </div>
   );
-}
+} 
