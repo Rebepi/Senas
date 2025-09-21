@@ -8,7 +8,7 @@ import os
 # ---------------------------
 # VARIABLES GLOBALES
 # ---------------------------
-samples_db = defaultdict(list)  # { 'A': [array_landmarks, ...], ... }
+samples_db = defaultdict(list)  # {'A': [array_landmarks, ...], ...}
 model = None
 sentence = []
 
@@ -17,9 +17,9 @@ MODEL_FILE = "letters_model.pkl"
 # ---------------------------
 # FUNCIONES AUXILIARES
 # ---------------------------
-
 def save_model():
     """Guarda el modelo entrenado en disco"""
+    global model
     if model:
         with open(MODEL_FILE, "wb") as f:
             pickle.dump(model, f)
@@ -38,7 +38,6 @@ def flatten_landmarks(landmarks):
 # ---------------------------
 # FUNCIONES PRINCIPALES
 # ---------------------------
-
 def train_letter_from_request(data):
     """Agrega una muestra y devuelve total de muestras para esa letra"""
     letter = data.label.upper()
@@ -82,16 +81,16 @@ def predict_letter_from_request(data):
     if not model:
         load_model()
     if not model:
-        return None, 0.0
-    
+        return None, 0.0  # modelo no entrenado
+
     if len(data.landmarks) != 21:
         raise ValueError("Se necesitan 21 landmarks")
     
     arr = np.array([[lm.x, lm.y, lm.z] for lm in data.landmarks])
     x = flatten_landmarks(arr).reshape(1, -1)
     pred = model.predict(x)[0]
-    conf = np.max(model.predict_proba(x))
-    return pred, float(conf)
+    conf = float(np.max(model.predict_proba(x)))
+    return pred, conf
 
 def list_letters():
     """Devuelve lista de letras entrenadas"""
