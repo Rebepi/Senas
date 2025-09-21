@@ -1,142 +1,133 @@
-# letters_service.py
-import os
-import joblib
+from collections import defaultdict
 import numpy as np
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+import string
+import pickle
+import os
 
-MODEL_PATH = "models/letters_knn.pkl"
-
-# Crear carpeta de modelos si no existe
-if not os.path.exists("models"):
-    os.makedirs("models")
-
-# Variables internas
-X_train = []
-y_train = []
+# ---------------------------
+# VARIABLES GLOBALES
+# ---------------------------
+samples_db = defaultdict(list)  # { 'A': [array_landmarks, ...], ... }
 model = None
-sentence_buffer = []  # Para modo oración
+sentence = []
+
+MODEL_FILE = "letters_model.pkl"
 
 # ---------------------------
-# Cargar modelo si existe
+# FUNCIONES AUXILIARES
 # ---------------------------
-if os.path.exists(MODEL_PATH):
-    model = joblib.load(MODEL_PATH)
-    print("Modelo de letras cargado desde disco.")
-else:
-    print("No se encontró modelo de letras. Se iniciará uno nuevo.")
 
-# ---------------------------
-# Función de conversión
-# ---------------------------
-def landmarks_to_features(landmarks):
-    """
-    Convierte una lista de dicts {'x','y','z'} a lista plana de floats.
-    """
-    features = []
-    for point in landmarks:
-        features.extend([point['x'] if isinstance(point, dict) else point.x,
-                         point['y'] if isinstance(point, dict) else point.y,
-                         point['z'] if isinstance(point, dict) else point.z])
-    return features
+def save_model():
+    """Guarda el modelo entrenado en disco"""
+    if model:
+        with open(MODEL_FILE, "wb") as f:
+            pickle.dump(model, f)
 
-# ---------------------------
-# Funciones principales
-# ---------------------------
-def train_letter(landmarks, label):
-    """
-    Entrena el modelo con una nueva muestra de letra.
-    landmarks: lista de floats (ya aplanada)
-    """
-    global X_train, y_train, model
-
-    features = np.array(landmarks).flatten()
-    X_train.append(features)
-    y_train.append(label)
-
-    n_neighbors = min(3, len(X_train))
-    model = KNeighborsClassifier(n_neighbors=n_neighbors)
-    model.fit(X_train, y_train)
-
-    joblib.dump(model, MODEL_PATH)
-    print(f"Entrenando letra '{label}'... Total muestras: {len(y_train)}")
-    return len(y_train)
-
-def train_letter_from_request(req):
-    """
-    Entrena letra a partir del request del frontend (landmarks dict + label)
-    """
-    features = landmarks_to_features(req.landmarks)
-    return train_letter(features, req.label)
-
-
-def predict_letter(landmarks):
-    """
-    Predice la letra a partir de landmarks (lista de floats)
-    """
+def load_model():
+    """Carga el modelo desde disco si existe"""
     global model
-    if model is None or len(X_train) == 0:
+    if os.path.exists(MODEL_FILE):
+        with open(MODEL_FILE, "rb") as f:
+            model = pickle.load(f)
+
+def flatten_landmarks(landmarks):
+    """Convierte array 21x3 → 63"""
+    return np.array(landmarks).flatten()
+
+# ---------------------------
+# FUNCIONES PRINCIPALES
+# ---------------------------
+
+def train_letter_from_request(data):
+    """Agrega una muestra y devuelve total de muestras para esa letra"""
+    letter = data.label.upper()
+    if letter not in string.ascii_uppercase:
+        raise ValueError("Letra inválida")
+    
+    if len(data.landmarks) != 21:
+        raise ValueError("Se necesitan 21 landmarks")
+    
+    # Convertir a numpy array
+    arr = np.array([[lm.x, lm.y, lm.z] for lm in data.landmarks])
+    samples_db[letter].append(arr)
+    
+    return len(samples_db[letter])
+
+def train_model():
+    """Entrena el modelo con todas las muestras"""
+    global model
+    X = []
+    y = []
+    for letter, samples in samples_db.items():
+        for s in samples:
+            X.append(flatten_landmarks(s))
+            y.append(letter)
+    
+    if not X:
+        return False  # no hay datos
+
+    X = np.array(X)
+    y = np.array(y)
+
+    clf = RandomForestClassifier(n_estimators=100)
+    clf.fit(X, y)
+    model = clf
+    save_model()
+    return True
+
+def predict_letter_from_request(data):
+    """Predice la letra usando el modelo entrenado"""
+    global model
+    if not model:
+        load_model()
+    if not model:
         return None, 0.0
-
-    features = np.array(landmarks).flatten().reshape(1, -1)
-    prediction = model.predict(features)[0]
-    confidence = model.predict_proba(features).max()
-    print(f"Predicción: {prediction} Confianza: {confidence:.2f}")
-    return prediction, float(confidence)
-
-def predict_letter_from_request(req):
-    """
-    Predice letra a partir del request del frontend (landmarks dict)
-    """
-    features = landmarks_to_features(req.landmarks)
-    return predict_letter(features)
-
+    
+    if len(data.landmarks) != 21:
+        raise ValueError("Se necesitan 21 landmarks")
+    
+    arr = np.array([[lm.x, lm.y, lm.z] for lm in data.landmarks])
+    x = flatten_landmarks(arr).reshape(1, -1)
+    pred = model.predict(x)[0]
+    conf = np.max(model.predict_proba(x))
+    return pred, float(conf)
 
 def list_letters():
-    """
-    Lista todas las letras entrenadas.
-    """
-    global model
-    if model is None:
-        return []
-    return sorted(list(model.classes_))
-
+    """Devuelve lista de letras entrenadas"""
+    return [l for l in string.ascii_uppercase if l in samples_db and samples_db[l]]
 
 def reset_letters():
-    """
-    Reinicia el modelo de letras.
-    """
-    global X_train, y_train, model, sentence_buffer
-    X_train = []
-    y_train = []
+    """Reinicia todo el modelo y borra muestras"""
+    global samples_db, model
+    samples_db = defaultdict(list)
     model = None
-    sentence_buffer = []
-    if os.path.exists(MODEL_PATH):
-        os.remove(MODEL_PATH)
-    print("Modelo de letras reiniciado.")
+    if os.path.exists(MODEL_FILE):
+        os.remove(MODEL_FILE)
 
+def clear_letter(letter):
+    """Borra muestras de una letra específica"""
+    letter = letter.upper()
+    if letter in samples_db:
+        samples_db[letter] = []
+
+def get_stats():
+    """Devuelve estadísticas de todas las letras"""
+    total = sum(len(v) for v in samples_db.values())
+    per_letter = {k: len(v) for k, v in samples_db.items()}
+    return {"total_samples": total, "samples_per_letter": per_letter}
 
 # ---------------------------
-# Modo oración
+# ORACION
 # ---------------------------
 def add_to_sentence(letter):
-    """
-    Agrega una letra al buffer de oración.
-    """
-    global sentence_buffer
-    sentence_buffer.append(letter)
-    return "".join(sentence_buffer)
-
+    global sentence
+    sentence.append(letter.upper())
+    return "".join(sentence)
 
 def get_sentence():
-    """
-    Retorna la oración actual.
-    """
-    return "".join(sentence_buffer)
-
+    return "".join(sentence)
 
 def reset_sentence():
-    """
-    Reinicia la oración.
-    """
-    global sentence_buffer
-    sentence_buffer = []
+    global sentence
+    sentence = []

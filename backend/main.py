@@ -1,16 +1,8 @@
-# main.py
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
-
-# ---------------------------
-# Importar servicios
-# ---------------------------
-import math_service
-import vocales_service
-from sign_service import add_training_sample, predict_landmarks
-import letters_service
+from typing import List, Optional
+import letters_service  # tu módulo donde manejas el modelo y los datos
 
 # ---------------------------
 # APP
@@ -18,40 +10,36 @@ import letters_service
 app = FastAPI(
     title="Sistema Gestual con MediaPipe API",
     description="API para vocales, letras, operaciones matemáticas y reconocimiento de gestos",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 # ---------------------------
 # CORS
 # ---------------------------
-# Configuración de CORS
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # o ["*"] para pruebas
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # ---------------------------
-# MODELOS DE DATOS
+# MODELOS Pydantic
 # ---------------------------
 class Point3D(BaseModel):
     x: float
     y: float
     z: float
 
-class MathOperation(BaseModel):
-    a: float
-    b: float
-    operation: str = "+"
-
-class MathResult(BaseModel):
-    result: float
-    operation: str
-
 class TrainData(BaseModel):
     landmarks: List[Point3D]
-    label: str
+    label: str  # 'A'-'Z'
 
 class PredictData(BaseModel):
     landmarks: List[Point3D]
@@ -59,60 +47,57 @@ class PredictData(BaseModel):
 class LetterInput(BaseModel):
     letter: str
 
-# ---------------------------
-# ENDPOINTS DE PRUEBA
-# ---------------------------
-@app.get("/ping")
-async def ping():
-    return {"message": "pong"}
+class StatsResponse(BaseModel):
+    total_samples: int
+    samples_per_letter: dict
 
 # ---------------------------
-# ENDPOINTS DE VOCAL
-# ---------------------------
-@app.post("/vocales/train", tags=["vocales"])
-async def train_vocal_endpoint(data: TrainData):
-    total = vocales_service.train_vocal([{ "x": p.x, "y": p.y, "z": p.z } for p in data.landmarks], data.label)
-    return {"message": "Vocal entrenada", "total_samples": total}
-
-@app.post("/vocales/predict", tags=["vocales"])
-async def predict_vocal_endpoint(data: PredictData):
-    prediction, confidence = vocales_service.predict_vocal([{ "x": p.x, "y": p.y, "z": p.z } for p in data.landmarks])
-    if prediction is None:
-        raise HTTPException(status_code=400, detail="Modelo no entrenado aún")
-    return {"prediction": prediction, "confidence": confidence}
-
-@app.get("/vocales/list", tags=["vocales"])
-async def list_vocales_endpoint():
-    return {"vocales": vocales_service.list_vocales()}
-
-@app.post("/vocales/reset", tags=["vocales"])
-async def reset_vocales_endpoint():
-    vocales_service.reset_vocales()
-    return {"message": "Modelo de vocales reiniciado"}
-
-# ---------------------------
-# ENDPOINTS DE LETRAS
+# ENDPOINTS LETRAS
 # ---------------------------
 @app.post("/letters/train", tags=["letters"])
 async def train_letter_endpoint(data: TrainData):
-    total = letters_service.train_letter_from_request(data)
-    return {"message": "Letra entrenada", "total_samples": total}
+    try:
+        total = letters_service.train_letter_from_request(data)
+        return {"message": f"Letra '{data.label.upper()}' entrenada", "total_samples": total}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error entrenando letra: {str(e)}")
 
 @app.post("/letters/predict", tags=["letters"])
 async def predict_letter_endpoint(data: PredictData):
-    prediction, confidence = letters_service.predict_letter_from_request(data)
-    if prediction is None:
-        raise HTTPException(status_code=400, detail="Modelo de letras no entrenado aún")
-    return {"prediction": prediction, "confidence": confidence}
+    try:
+        prediction, confidence = letters_service.predict_letter_from_request(data)
+        if prediction is None:
+            raise HTTPException(status_code=400, detail="Modelo de letras no entrenado aún")
+        return {"prediction": prediction, "confidence": confidence}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error prediciendo letra: {str(e)}")
 
 @app.get("/letters/list", tags=["letters"])
 async def list_letters_endpoint():
     return {"letters": letters_service.list_letters()}
 
 @app.post("/letters/reset", tags=["letters"])
-async def reset_letters_endpoint():
-    letters_service.reset_letters()
-    return {"message": "Modelo de letras reiniciado"}
+async def reset_letters_endpoint(letter: Optional[str] = None):
+    """
+    Reinicia todas las letras o solo una letra específica.
+    - Sin parámetro: reinicia todo el modelo.
+    - Con letra: reinicia solo esa letra.
+    """
+    try:
+        if letter:
+            letters_service.clear_letter(letter)
+            return {"message": f"Muestras de '{letter.upper()}' eliminadas"}
+        else:
+            letters_service.reset_letters()
+            return {"message": "Modelo de letras reiniciado"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reiniciando letra(s): {str(e)}")
+
+@app.get("/letters/stats", tags=["letters"], response_model=StatsResponse)
+async def letters_stats_endpoint():
+    """Devuelve estadísticas de todas las letras entrenadas."""
+    stats = letters_service.get_stats()
+    return StatsResponse(total_samples=stats['total_samples'], samples_per_letter=stats['samples_per_letter'])
 
 # ---------------------------
 # Modo oración
@@ -123,94 +108,13 @@ async def add_letter_to_sentence(data: LetterInput):
     return {"sentence": sentence}
 
 @app.get("/letters/sentence", tags=["letters"])
-async def get_sentence():
-    sentence = letters_service.get_sentence()
-    return {"sentence": sentence}
+async def get_sentence_endpoint():
+    return {"sentence": letters_service.get_sentence()}
 
 @app.post("/letters/sentence/reset", tags=["letters"])
-async def reset_sentence():
+async def reset_sentence_endpoint():
     letters_service.reset_sentence()
     return {"message": "Oración reiniciada"}
-
-# ---------------------------
-# ENDPOINTS DE GESTOS
-# ---------------------------
-@app.post("/sign/train", tags=["sign"])
-async def train_sign(data: TrainData):
-    total = add_training_sample([{ "x": p.x, "y": p.y, "z": p.z } for p in data.landmarks], data.label)
-    return {"message": "Gesto entrenado", "total_samples": total}
-
-@app.post("/sign/predict", tags=["sign"])
-async def predict_sign(data: PredictData):
-    prediction, confidence = predict_landmarks([{ "x": p.x, "y": p.y, "z": p.z } for p in data.landmarks])
-    if prediction is None:
-        raise HTTPException(status_code=400, detail="Modelo no entrenado aún")
-    return {"prediction": prediction, "confidence": confidence}
-
-# ---------------------------
-# ENDPOINTS DE OPERACIONES MATEMÁTICAS
-# ---------------------------
-@app.post("/math/calculate", response_model=MathResult, tags=["math"])
-async def calculate_math(operation: MathOperation):
-    try:
-        a, b = operation.a, operation.b
-        op = operation.operation
-
-        operations = {
-            "+": math_service.add,
-            "-": math_service.subtract,
-            "*": math_service.multiply,
-            "/": math_service.divide,
-            "**": math_service.power,
-            "sqrt": math_service.square_root
-        }
-
-        if op not in operations:
-            raise HTTPException(status_code=400, detail="Operación no válida")
-        
-        if op == "sqrt":
-            result = operations[op](a)
-            return MathResult(result=result, operation=f"sqrt({a})")
-        
-        result = operations[op](a, b)
-        return MathResult(result=result, operation=f"{a} {op} {b}")
-    
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
-
-# ---------------------------
-# ROOT (INFO GENERAL)
-# ---------------------------
-@app.get("/", tags=["info"])
-async def root():
-    return {
-        "message": "Sistema Gestual con MediaPipe API",
-        "version": "1.0.0",
-        "endpoints": {
-            "ping": "/ping",
-            "vocales": {
-                "train": "/vocales/train",
-                "predict": "/vocales/predict",
-                "list": "/vocales/list",
-                "reset": "/vocales/reset"
-            },
-            "letters": {
-                "train": "/letters/train",
-                "predict": "/letters/predict",
-                "list": "/letters/list",
-                "reset": "/letters/reset",
-                "sentence": {
-                    "add": "/letters/sentence/add",
-                    "get": "/letters/sentence",
-                    "reset": "/letters/sentence/reset"
-                }
-            },
-            "math": {"calculate": "/math/calculate"},
-            "sign": {"train": "/sign/train", "predict": "/sign/predict"}
-        }
-    }
 
 # ---------------------------
 # MAIN

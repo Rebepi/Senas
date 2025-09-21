@@ -1,143 +1,165 @@
-import React, { useState, useEffect } from "react";
-import { useHandCamera } from "../hooks/useHandCamera";
-import type { HandPoint } from "../hooks/useHandCamera";
-import { trainLetter, predictLetter } from "../services/api";
+import React, { useState } from "react";
+import { useCamera } from "../hooks/useCamera";
+import { useHandDetection } from "../hooks/useHandDetection";
+import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
+import "react-circular-progressbar/dist/styles.css";
+
+interface Props {
+  initialLetter: string;
+  maxSamples?: number;
+}
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-const TARGET_PER_CLASS = 100;
 
-export default function AbecedarioPage() {
-  const { videoRef, canvasRef, landmarks, status, error } = useHandCamera();
-  const [samples, setSamples] = useState<{ label: string; landmarks: number[][] }[]>([]);
-  const [collecting, setCollecting] = useState<string | null>(null);
-  const [prediction, setPrediction] = useState<{ letter: string; confidence: number } | null>(null);
-  const [apiError, setApiError] = useState<string>("");
+// Simulación de muestras por letra
+const LETTER_SAMPLES: Record<string, number> = ALPHABET.reduce((acc, l) => {
+  acc[l] = Math.floor(Math.random() * 50);
+  return acc;
+}, {} as Record<string, number>);
 
-  // Helper para obtener el conteo de muestras
-  const getCount = (label: string) => samples.filter(s => s.label === label).length;
+export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Props) {
+  const { videoRef } = useCamera();
+  const { canvasRef, handData, isHandDetected } = useHandDetection(videoRef);
 
-  // Maneja el inicio de la recolección
-  const startCollect = (letter: string) => {
-    setCollecting(letter);
-    setPrediction(null); // Limpiar predicción anterior
-    setApiError(""); // Limpiar errores
-  };
+  const [letter, setLetter] = useState(initialLetter);
+  const [sampleCount, setSampleCount] = useState(0); // <-- Sin porcentaje por defecto
 
-  // Maneja la detención de la recolección
-  const stopCollect = () => setCollecting(null);
+  const progress = Math.min(sampleCount / maxSamples, 1) * 100;
 
-  // Recolecta landmarks cada 300ms y se detiene automáticamente al alcanzar el objetivo
-  useEffect(() => {
-    if (!collecting || !landmarks) return;
-
-    const interval = setInterval(() => {
-      // Detener la recolección si se alcanza el objetivo
-      const currentCount = getCount(collecting);
-      if (currentCount >= TARGET_PER_CLASS) {
-        stopCollect();
-        console.log(`Recolectadas ${TARGET_PER_CLASS} muestras para la letra ${collecting}.`);
-        return;
-      }
-      
-      const formatted = (landmarks as HandPoint[]).map(l => [l.x, l.y, l.z]);
-      setSamples(prev => [...prev, { label: collecting, landmarks: formatted }]);
-    }, 300);
-
-    // Función de limpieza para detener el intervalo
-    return () => clearInterval(interval);
-  }, [collecting, landmarks]);
-
-  const handleTrain = async (label: string) => {
-    const allLandmarksForLabel = samples.filter(s => s.label === label).map(s => s.landmarks);
-    
-    if (allLandmarksForLabel.length < TARGET_PER_CLASS) {
-      alert(`Necesitas recolectar ${TARGET_PER_CLASS} muestras para entrenar la letra ${label}.`);
-      return;
-    }
-    
-    // Aplanar el array de arrays de landmarks para enviarlo a la API
-    const flattenedData = allLandmarksForLabel.flat();
-
-    try {
-      const res = await trainLetter(flattenedData, label);
-      alert(`Letra ${label} entrenada. Total de muestras: ${res.total_samples}`);
-      setApiError("");
-    } catch {
-      setApiError(`Error entrenando letra ${label}`);
-    }
-  };
-
-  const handlePredict = async () => {
-    if (!landmarks) {
-      setApiError("No se detectan landmarks. Asegúrate de que tu mano esté visible.");
-      return;
-    }
-    
-    const formatted = (landmarks as HandPoint[]).map(l => [l.x, l.y, l.z]);
-
-    try {
-      const res = await predictLetter(formatted);
-      setPrediction({ letter: res.prediction, confidence: res.confidence });
-      setApiError("");
-    } catch {
-      setApiError("Error prediciendo letra. Asegúrate de que el modelo esté entrenado.");
-    }
-  };
-
-  const getPercentage = (label: string) => Math.min((getCount(label) / TARGET_PER_CLASS) * 100, 100);
+  // Funciones
+  const handleTrain = () => { if (isHandDetected && sampleCount < maxSamples) setSampleCount(sampleCount + 1); };
+  const handlePredict = () => { if (!handData) return alert("Predicción API aquí"); };
+  const handleClear = () => setSampleCount(0);
+  const handleSave = () => alert(`Guardadas ${sampleCount} muestras para la letra ${letter}`);
+  const handleBack = () => alert("Regresando al panel principal...");
+  const handleChangeLetter = (l: string) => { setLetter(l); setSampleCount(0); }; // Reinicia sin porcentaje
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6 flex flex-col items-center">
-      <h1 className="text-3xl font-bold mb-6">🖐️ Detector de Abecedario</h1>
+    <div className="p-6 w-full min-h-screen bg-gray-900 text-white flex flex-col items-center">
+      {/* Título principal */}
+      <h2 className="text-4xl font-bold mb-6 text-indigo-400 text-center">Entrenamiento de Mano: "{letter}" ✋</h2>
+      <p className="text-gray-300 mb-6 text-center max-w-[700px]">
+        Aprende a entrenar cada letra con tu mano. Captura muestras, observa la referencia y sigue el progreso.
+      </p>
 
-      <div className="relative w-full max-w-lg aspect-video rounded-xl overflow-hidden border-4 border-slate-700 shadow-lg mb-6">
-        <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" autoPlay muted playsInline />
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
-        <div className="absolute top-2 left-2 bg-black/50 px-3 py-1 rounded text-sm">{status}</div>
-        {error && <p className="absolute bottom-2 left-2 text-red-400 text-sm">{error}</p>}
-      </div>
+      {/* Contenedor principal de 3 secciones alineadas */}
+      <div className="flex gap-8 w-full max-w-[1200px] justify-center items-start flex-wrap">
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-3xl">
-        {ALPHABET.map(letter => (
-          <div key={letter} className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg flex flex-col gap-2">
-            <div className="font-bold text-lg">{letter}</div>
-            <div className="h-3 w-full bg-slate-700 rounded">
-              <div className="h-3 bg-green-500 rounded" style={{ width: `${getPercentage(letter)}%` }} />
-            </div>
-            <div className="text-sm">{getCount(letter)} / {TARGET_PER_CLASS}</div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => (collecting === letter ? stopCollect() : startCollect(letter))}
-                className={`flex-1 px-2 py-1 rounded font-semibold ${collecting === letter ? "bg-rose-600" : "bg-green-600"}`}
-              >
-                {collecting === letter ? "Detener" : "Recolectar"}
-              </button>
-              <button
-                onClick={() => handleTrain(letter)}
-                className="flex-1 px-2 py-1 rounded bg-indigo-600 font-semibold"
-              >
-                Entrenar
-              </button>
-            </div>
+        {/* Sección 1: Imagen de referencia */}
+        <div className="flex flex-col items-center gap-3 flex-1 min-w-[300px]">
+          <h3 className="text-xl font-semibold text-indigo-300">Referencia</h3>
+          <p className="text-gray-400 text-sm text-center mb-2">Observa cómo debe posicionarse la mano.</p>
+          <div className="w-full h-72 border-4 border-indigo-500 rounded-xl overflow-hidden shadow-lg flex items-center justify-center bg-gray-800">
+            <img
+              src={`/assets/abecedario/${letter}.jpg`}
+              alt={`Referencia letra ${letter}`}
+              className="w-full h-full object-contain"
+            />
           </div>
-        ))}
+        </div>
+
+        {/* Sección 2: Video + Canvas + CircularProgress */}
+        <div className="flex flex-col items-center gap-4 flex-1 min-w-[350px]">
+          <h3 className="text-xl font-semibold text-indigo-300">Cámara / Entrenamiento</h3>
+          <p className="text-gray-400 text-sm text-center mb-2">Coloca tu mano frente a la cámara y comienza a entrenar.</p>
+          <div className={`relative w-full h-72 rounded-xl overflow-hidden shadow-2xl border-4 transition-all duration-500
+            ${isHandDetected ? "border-green-500 shadow-green-500/50 animate-pulse" : "border-indigo-500"}`}>
+            <video ref={videoRef} className="absolute w-full h-full object-cover" autoPlay muted playsInline />
+            <canvas ref={canvasRef} className="absolute w-full h-full" />
+          </div>
+
+          <div className="w-40 h-40 mt-4">
+            <CircularProgressbar
+              value={progress}
+              text={`${Math.round(progress)}%`}
+              styles={buildStyles({
+                textColor: "white",
+                pathColor: "#6366f1",
+                trailColor: "#374151",
+                textSize: "16px",
+              })}
+            />
+          </div>
+        </div>
+
+        {/* Sección 3: Selector de letras */}
+        <div className="flex flex-col items-center gap-4 flex-1 min-w-[300px]">
+          <h3 className="text-xl font-semibold text-indigo-300">Seleccionar letra</h3>
+          <p className="text-gray-400 text-sm text-center mb-2">Cambia la letra que deseas entrenar.</p>
+          <div className="grid grid-cols-4 gap-3 w-full justify-center">
+            {ALPHABET.map((l) => (
+              <button
+                key={l}
+                onClick={() => handleChangeLetter(l)}
+                className={`w-12 h-12 rounded-full font-bold transition-all duration-200
+                  ${l === letter
+                    ? "bg-indigo-600 text-white shadow-md scale-110"
+                    : "bg-gray-700 text-gray-300 hover:bg-indigo-500 hover:scale-105"
+                  }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
 
-      <div className="mt-6 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg w-full max-w-3xl flex flex-col items-center gap-2">
+      {/* Botones de acción */}
+      <div className="flex gap-4 justify-center flex-wrap mt-8">
+        <button
+          onClick={handleTrain}
+          disabled={!isHandDetected || sampleCount >= maxSamples}
+          className={`px-6 py-2 rounded-full font-bold transition-all duration-200 ${
+            !isHandDetected || sampleCount >= maxSamples
+              ? "bg-gray-600 cursor-not-allowed"
+              : "bg-indigo-600 hover:bg-indigo-700"
+          }`}
+        >
+          Entrenar
+        </button>
+
         <button
           onClick={handlePredict}
-          className="px-4 py-2 bg-emerald-500 rounded font-bold hover:bg-emerald-600"
+          className="px-6 py-2 rounded-full bg-yellow-500 hover:bg-yellow-600 font-bold text-gray-900 transition-all duration-200"
         >
-          Predecir Última Letra
+          Predecir
         </button>
-        {prediction && (
-          <div className="mt-2 p-2 bg-black/50 rounded w-full text-center">
-            <p>Letra: <strong>{prediction.letter}</strong></p>
-            <p>Confianza: {(prediction.confidence * 100).toFixed(2)}%</p>
-          </div>
-        )}
-        {apiError && <p className="mt-2 text-red-400">{apiError}</p>}
+
+        <button
+          onClick={handleClear}
+          className="px-6 py-2 rounded-full bg-red-500 hover:bg-red-600 font-bold transition-all duration-200"
+        >
+          Limpiar
+        </button>
+
+        <button
+          onClick={handleSave}
+          className="px-6 py-2 rounded-full bg-green-600 hover:bg-green-700 font-bold transition-all duration-200"
+        >
+          Guardar
+        </button>
+
+        <button
+          onClick={handleBack}
+          className="px-6 py-2 rounded-full bg-gray-600 hover:bg-gray-700 font-bold transition-all duration-200"
+        >
+          Regresar
+        </button>
       </div>
+
+      {/* Barra de progreso horizontal */}
+      <div className="w-full max-w-[700px] h-6 bg-gray-700 rounded-full overflow-hidden mt-6">
+        <div className="h-full bg-indigo-400 transition-all duration-300" style={{ width: `${progress}%` }} />
+      </div>
+      <p className="text-gray-300 font-semibold mt-1">{sampleCount} / {maxSamples} muestras</p>
+
+      {/* Información opcional */}
+      {handData && (
+        <p className="mt-2 text-sm text-gray-400">
+          Última actualización: {new Date(handData.timestamp).toLocaleTimeString()}
+        </p>
+      )}
     </div>
   );
 }
