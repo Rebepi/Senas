@@ -19,8 +19,10 @@ function App() {
           <Route path="/oraciones" element={<OracionesPage />} />
           <Route path="/calculadora" element={<CalculadoraPage />} />
           <Route path="/perfil" element={<PerfilPage />} />
-          <Route path="/entrenamiento" element={<EntrenamientoPage />} />
 
+          {/* 👇 Aquí cambiamos para aceptar la letra como parámetro */}
+          <Route path="/entrenamiento" element={<EntrenamientoPage />} />
+          
         </Routes>
       </DashboardLayout>
     </BrowserRouter>

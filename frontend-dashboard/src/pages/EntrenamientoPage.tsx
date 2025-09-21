@@ -1,5 +1,6 @@
 // src/pages/EntrenamientoPage.tsx
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom"; // 👈 importar navigate
 import { useCamera } from "../hooks/useCamera";
 import { useHandDetection } from "../hooks/useHandDetection";
 import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
@@ -7,20 +8,21 @@ import "react-circular-progressbar/dist/styles.css";
 import { trainLetter, predictLetter } from "../services/api";
 
 interface Props {
-  initialLetter: string;
+  initialLetter?: string;
   maxSamples?: number;
 }
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
-export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Props) {
+export default function EntrenamientoPage({ initialLetter = "A", maxSamples = 50 }: Props) {
   const { videoRef } = useCamera();
   const { canvasRef, handData, isHandDetected } = useHandDetection(videoRef);
+  const navigate = useNavigate(); // 👈 inicializar navigate
 
   const [letter, setLetter] = useState(initialLetter);
   const [sampleCount, setSampleCount] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState(""); // <-- nuevo estado
+  const [statusMessage, setStatusMessage] = useState("");
 
   const progress = Math.min(sampleCount / maxSamples, 1) * 100;
 
@@ -33,10 +35,10 @@ export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Pr
 
     setLoading(true);
     try {
-      const landmarks = handData.landmarks.map(lm => ({ x: lm.x, y: lm.y, z: lm.z }));
+      const landmarks = handData.landmarks.map((lm) => ({ x: lm.x, y: lm.y, z: lm.z }));
       const res = await trainLetter(letter, landmarks);
       setSampleCount(res.total_samples);
-      setStatusMessage(res.message); // <-- actualizar mensaje en pantalla
+      setStatusMessage(res.message);
     } catch (error: any) {
       setStatusMessage("Error entrenando letra: " + (error.response?.data?.detail || error.message));
     } finally {
@@ -49,9 +51,11 @@ export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Pr
 
     setLoading(true);
     try {
-      const landmarks = handData.landmarks.map(lm => ({ x: lm.x, y: lm.y, z: lm.z }));
+      const landmarks = handData.landmarks.map((lm) => ({ x: lm.x, y: lm.y, z: lm.z }));
       const res = await predictLetter(landmarks);
-      setStatusMessage(`Predicción: ${res.prediction} (Confianza: ${(res.confidence * 100).toFixed(1)}%)`);
+      setStatusMessage(
+        `Predicción: ${res.prediction} (Confianza: ${(res.confidence * 100).toFixed(1)}%)`
+      );
     } catch (error: any) {
       setStatusMessage("Error prediciendo letra: " + (error.response?.data?.detail || error.message));
     } finally {
@@ -63,13 +67,16 @@ export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Pr
     setSampleCount(0);
     setStatusMessage("");
   };
-  const handleSave = () => setStatusMessage(`Guardadas ${sampleCount} muestras para la letra ${letter}`);
-  const handleBack = () => setStatusMessage("Regresando al panel principal...");
+
+  const handleSave = () =>
+    setStatusMessage(`Guardadas ${sampleCount} muestras para la letra ${letter}`);
+
+  const handleBack = () => navigate("/abecedario"); // 👈 ahora redirige al abecedario
 
   const handleChangeLetter = (l: string) => {
     setLetter(l);
     setSampleCount(0);
-    setStatusMessage(""); // limpiar mensaje al cambiar letra
+    setStatusMessage("");
   };
 
   // ======================
@@ -81,12 +88,12 @@ export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Pr
         Entrenamiento de Mano: "{letter}" ✋
       </h2>
       <p className="text-gray-300 mb-6 text-center max-w-[700px]">
-        Aprende a entrenar cada letra con tu mano. Captura muestras, observa la referencia y sigue el progreso.
+        Aprende a entrenar cada letra con tu mano. Captura muestras, observa la referencia y sigue
+        el progreso.
       </p>
 
       {/* Contenedor principal: 3 secciones */}
       <div className="flex gap-8 w-full max-w-[1200px] justify-center items-start flex-wrap">
-
         {/* Sección 1: Imagen de referencia */}
         <div className="flex flex-col items-center gap-3 flex-1 min-w-[300px]">
           <h3 className="text-xl font-semibold text-indigo-300">Referencia</h3>
@@ -108,9 +115,17 @@ export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Pr
           <p className="text-gray-400 text-sm text-center mb-2">
             Coloca tu mano frente a la cámara y comienza a entrenar.
           </p>
-          <div className={`relative w-full h-72 rounded-xl overflow-hidden shadow-2xl border-4 transition-all duration-500
-            ${isHandDetected ? "border-green-500 shadow-green-500/50 animate-pulse" : "border-indigo-500"}`}>
-            <video ref={videoRef} className="absolute w-full h-full object-cover" autoPlay muted playsInline />
+          <div
+            className={`relative w-full h-72 rounded-xl overflow-hidden shadow-2xl border-4 transition-all duration-500
+            ${isHandDetected ? "border-green-500 shadow-green-500/50 animate-pulse" : "border-indigo-500"}`}
+          >
+            <video
+              ref={videoRef}
+              className="absolute w-full h-full object-cover"
+              autoPlay
+              muted
+              playsInline
+            />
             <canvas ref={canvasRef} className="absolute w-full h-full" />
           </div>
 
@@ -131,17 +146,19 @@ export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Pr
         {/* Sección 3: Selector de letras */}
         <div className="flex flex-col items-center gap-4 flex-1 min-w-[300px]">
           <h3 className="text-xl font-semibold text-indigo-300">Seleccionar letra</h3>
-          <p className="text-gray-400 text-sm text-center mb-2">Cambia la letra que deseas entrenar.</p>
+          <p className="text-gray-400 text-sm text-center mb-2">
+            Cambia la letra que deseas entrenar.
+          </p>
           <div className="grid grid-cols-4 gap-3 w-full justify-center">
-            {ALPHABET.map(l => (
+            {ALPHABET.map((l) => (
               <button
                 key={l}
                 onClick={() => handleChangeLetter(l)}
-                className={`w-12 h-12 rounded-full font-bold transition-all duration-200
-                  ${l === letter
+                className={`w-12 h-12 rounded-full font-bold transition-all duration-200 ${
+                  l === letter
                     ? "bg-indigo-600 text-white shadow-md scale-110"
                     : "bg-gray-700 text-gray-300 hover:bg-indigo-500 hover:scale-105"
-                  }`}
+                }`}
               >
                 {l}
               </button>
@@ -187,7 +204,7 @@ export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Pr
         </button>
 
         <button
-          onClick={handleBack}
+          onClick={handleBack} // 👈 usar navigate
           className="px-6 py-2 rounded-full bg-gray-600 hover:bg-gray-700 font-bold transition-all duration-200"
         >
           Regresar
@@ -196,7 +213,10 @@ export default function EntrenamientoPage({ initialLetter, maxSamples = 50 }: Pr
 
       {/* Barra de progreso horizontal */}
       <div className="w-full max-w-[700px] h-6 bg-gray-700 rounded-full overflow-hidden mt-6">
-        <div className="h-full bg-indigo-400 transition-all duration-300" style={{ width: `${progress}%` }} />
+        <div
+          className="h-full bg-indigo-400 transition-all duration-300"
+          style={{ width: `${progress}%` }}
+        />
       </div>
       <p className="text-gray-300 font-semibold mt-1">
         {sampleCount} / {maxSamples} muestras
